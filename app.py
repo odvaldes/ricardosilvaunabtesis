@@ -486,13 +486,58 @@ if "resultado" not in st.session_state:
 
 if ejecutar:
     try:
-        with st.spinner("Ejecutando integración, ingeniería de variables y modelo predictivo..."):
-            if zip_file is not None:
-                st.session_state.resultado = procesar_zip(zip_file)
-            else:
-                st.session_state.resultado = ejecutar_desde_carpeta(carpeta_local)
-        st.success("Proceso completado. SIAD está listo para análisis.")
+        estado = st.status("Procesando SIAD...", expanded=True)
+        barra = st.progress(0, text="Iniciando procesamiento")
+
+        if zip_file is not None:
+            estado.write("📦 Paso 0/5 · Descomprimiendo y validando las 7 bases EXCON...")
+            barra.progress(5, text="Validando archivos de entrada")
+            td = tempfile.mkdtemp(prefix="siad_")
+            with zipfile.ZipFile(io.BytesIO(zip_file.getvalue())) as z:
+                z.extractall(td)
+            carpeta_trabajo = None
+            for root, dirs, files in os.walk(td):
+                if all(v in files for v in ARCHIVOS.values()):
+                    carpeta_trabajo = root
+                    break
+            if carpeta_trabajo is None:
+                raise FileNotFoundError("El ZIP no contiene juntas las 7 bases EXCON requeridas.")
+        else:
+            carpeta_trabajo = carpeta_local
+
+        estado.write("📚 Paso 1/5 · Leyendo movimientos, productos, inventario, compras, recepciones y proyectos...")
+        barra.progress(15, text="Leyendo bases Excel")
+        fuentes = preparar_fuentes(carpeta_trabajo)
+        total_filas = sum(len(x) for x in fuentes.values())
+        estado.write(f"✓ Bases cargadas: {len(fuentes)} archivos · {total_filas:,} registros leídos.")
+
+        estado.write("🔗 Paso 2/5 · Notebook 1: auditando, normalizando e integrando las bases...")
+        barra.progress(35, text="Notebook 1 · Integración")
+        n1 = notebook_1_integracion(fuentes)
+        estado.write(f"✓ Notebook 1 terminado · {len(n1['mov']):,} movimientos normalizados.")
+
+        estado.write("⚙️ Paso 3/5 · Notebook 2: construyendo panel SKU–centro de costo y variables predictivas...")
+        barra.progress(55, text="Notebook 2 · Ingeniería de variables")
+        n2 = notebook_2_variables(n1)
+        estado.write(f"✓ Notebook 2 terminado · {len(n2['panel']):,} observaciones históricas construidas.")
+
+        estado.write("🤖 Paso 4/5 · Notebook 3: entrenando Random Forest y estimando probabilidad de inmovilización...")
+        barra.progress(75, text="Notebook 3 · Modelo predictivo")
+        n3 = notebook_3_modelo(n2)
+        estado.write(f"✓ Notebook 3 terminado · {len(n3['scoring']):,} registros evaluados.")
+
+        estado.write("📊 Paso 5/5 · Calculando IRI, recomendaciones y preparando dashboard...")
+        barra.progress(95, text="Generando indicadores SIAD")
+        st.session_state.resultado = (n1, n2, n3)
+
+        barra.progress(100, text="SIAD listo")
+        estado.update(label="✅ Procesamiento completado", state="complete", expanded=False)
+        st.success("SIAD está listo. Puedes revisar los KPI y la priorización de SKU.")
     except Exception as e:
+        try:
+            estado.update(label="❌ Error durante el procesamiento", state="error", expanded=True)
+        except Exception:
+            pass
         st.exception(e)
 
 if st.session_state.resultado is None:
