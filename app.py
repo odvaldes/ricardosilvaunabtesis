@@ -481,67 +481,142 @@ def procesar_zip(upload):
             return ejecutar_desde_carpeta(root)
     raise FileNotFoundError("El ZIP no contiene juntas las 7 bases EXCON requeridas.")
 
-if "resultado" not in st.session_state:
-    st.session_state.resultado = None
+# ---------------------------------------------------------------------
+# Flujo guiado por etapas
+# ---------------------------------------------------------------------
+for clave, valor in {
+    "resultado": None,
+    "fuentes": None,
+    "n1": None,
+    "n2": None,
+    "n3": None,
+    "carpeta_trabajo": None,
+    "paso_siad": 0,
+}.items():
+    if clave not in st.session_state:
+        st.session_state[clave] = valor
+
+def reiniciar_siad():
+    for k in ["resultado","fuentes","n1","n2","n3","carpeta_trabajo"]:
+        st.session_state[k] = None
+    st.session_state.paso_siad = 0
+
+st.markdown("### Flujo de procesamiento")
+etapas = [
+    "0 · Preparar bases",
+    "1 · Cargar datos",
+    "2 · Notebook 1",
+    "3 · Notebook 2",
+    "4 · Notebook 3",
+    "5 · Dashboard",
+]
+st.progress(min(st.session_state.paso_siad / 5, 1.0))
+st.caption(" → ".join(etapas))
 
 if ejecutar:
+    reiniciar_siad()
     try:
-        estado = st.status("Procesando SIAD...", expanded=True)
-        barra = st.progress(0, text="Iniciando procesamiento")
-
-        if zip_file is not None:
-            estado.write("📦 Paso 0/5 · Descomprimiendo y validando las 7 bases EXCON...")
-            barra.progress(5, text="Validando archivos de entrada")
-            td = tempfile.mkdtemp(prefix="siad_")
-            with zipfile.ZipFile(io.BytesIO(zip_file.getvalue())) as z:
-                z.extractall(td)
-            carpeta_trabajo = None
-            for root, dirs, files in os.walk(td):
-                if all(v in files for v in ARCHIVOS.values()):
-                    carpeta_trabajo = root
-                    break
-            if carpeta_trabajo is None:
-                raise FileNotFoundError("El ZIP no contiene juntas las 7 bases EXCON requeridas.")
-        else:
-            carpeta_trabajo = carpeta_local
-
-        estado.write("📚 Paso 1/5 · Leyendo movimientos, productos, inventario, compras, recepciones y proyectos...")
-        barra.progress(15, text="Leyendo bases Excel")
-        fuentes = preparar_fuentes(carpeta_trabajo)
-        total_filas = sum(len(x) for x in fuentes.values())
-        estado.write(f"✓ Bases cargadas: {len(fuentes)} archivos · {total_filas:,} registros leídos.")
-
-        estado.write("🔗 Paso 2/5 · Notebook 1: auditando, normalizando e integrando las bases...")
-        barra.progress(35, text="Notebook 1 · Integración")
-        n1 = notebook_1_integracion(fuentes)
-        estado.write(f"✓ Notebook 1 terminado · {len(n1['mov']):,} movimientos normalizados.")
-
-        estado.write("⚙️ Paso 3/5 · Notebook 2: construyendo panel SKU–centro de costo y variables predictivas...")
-        barra.progress(55, text="Notebook 2 · Ingeniería de variables")
-        n2 = notebook_2_variables(n1)
-        estado.write(f"✓ Notebook 2 terminado · {len(n2['panel']):,} observaciones históricas construidas.")
-
-        estado.write("🤖 Paso 4/5 · Notebook 3: entrenando Random Forest y estimando probabilidad de inmovilización...")
-        barra.progress(75, text="Notebook 3 · Modelo predictivo")
-        n3 = notebook_3_modelo(n2)
-        estado.write(f"✓ Notebook 3 terminado · {len(n3['scoring']):,} registros evaluados.")
-
-        estado.write("📊 Paso 5/5 · Calculando IRI, recomendaciones y preparando dashboard...")
-        barra.progress(95, text="Generando indicadores SIAD")
-        st.session_state.resultado = (n1, n2, n3)
-
-        barra.progress(100, text="SIAD listo")
-        estado.update(label="✅ Procesamiento completado", state="complete", expanded=False)
-        st.success("SIAD está listo. Puedes revisar los KPI y la priorización de SKU.")
+        with st.spinner("Validando archivos de entrada..."):
+            if zip_file is not None:
+                td = tempfile.mkdtemp(prefix="siad_")
+                with zipfile.ZipFile(io.BytesIO(zip_file.getvalue())) as z:
+                    z.extractall(td)
+                carpeta = None
+                for root, dirs, files in os.walk(td):
+                    if all(v in files for v in ARCHIVOS.values()):
+                        carpeta = root
+                        break
+                if carpeta is None:
+                    raise FileNotFoundError("El ZIP no contiene juntas las 7 bases EXCON requeridas.")
+                st.session_state.carpeta_trabajo = carpeta
+            else:
+                faltan = [v for v in ARCHIVOS.values() if not (Path(carpeta_local) / v).exists()]
+                if faltan:
+                    raise FileNotFoundError("Faltan bases: " + ", ".join(faltan))
+                st.session_state.carpeta_trabajo = carpeta_local
+        st.session_state.paso_siad = 1
+        st.success("✓ Bases validadas. Puedes continuar con la carga.")
+        st.rerun()
     except Exception as e:
-        try:
-            estado.update(label="❌ Error durante el procesamiento", state="error", expanded=True)
-        except Exception:
-            pass
         st.exception(e)
 
+# Paso 1: lectura
+if st.session_state.paso_siad == 1:
+    st.info("**Paso 1 de 5 · Carga de datos**\n\nSe leerán las siete bases Excel de EXCON.")
+    if st.button("▶ Continuar: cargar bases", type="primary", use_container_width=True):
+        with st.spinner("Leyendo bases Excel..."):
+            st.session_state.fuentes = preparar_fuentes(st.session_state.carpeta_trabajo)
+        total = sum(len(x) for x in st.session_state.fuentes.values())
+        st.session_state.paso_siad = 2
+        st.success(f"✓ 7 bases cargadas · {total:,} registros.")
+        st.rerun()
+
+# Paso 2: Notebook 1
+if st.session_state.paso_siad == 2:
+    st.info(
+        "**Paso 2 de 5 · Notebook 1 — Auditoría e integración**\n\n"
+        "Normaliza SKU, fechas, centros de costo, movimientos, inventario y compras."
+    )
+    if st.button("▶ Continuar: ejecutar Notebook 1", type="primary", use_container_width=True):
+        with st.spinner("Ejecutando Notebook 1..."):
+            st.session_state.n1 = notebook_1_integracion(st.session_state.fuentes)
+        st.session_state.paso_siad = 3
+        st.success(f"✓ Notebook 1 completado · {len(st.session_state.n1['mov']):,} movimientos normalizados.")
+        st.rerun()
+
+# Paso 3: Notebook 2
+if st.session_state.paso_siad == 3:
+    st.info(
+        "**Paso 3 de 5 · Notebook 2 — Ingeniería de variables**\n\n"
+        "Construye el panel SKU–centro de costo y variables de consumo, antigüedad, "
+        "cobertura, rotación, entradas y stock."
+    )
+    if st.button("▶ Continuar: ejecutar Notebook 2", type="primary", use_container_width=True):
+        with st.spinner("Construyendo panel histórico y variables predictivas..."):
+            st.session_state.n2 = notebook_2_variables(st.session_state.n1)
+        st.session_state.paso_siad = 4
+        st.success(f"✓ Notebook 2 completado · {len(st.session_state.n2['panel']):,} observaciones históricas.")
+        st.rerun()
+
+# Paso 4: Notebook 3
+if st.session_state.paso_siad == 4:
+    st.info(
+        "**Paso 4 de 5 · Notebook 3 — Modelo predictivo**\n\n"
+        "Entrena Random Forest, estima la probabilidad de inmovilización por SKU, "
+        "calcula el IRI y genera la recomendación SIAD."
+    )
+    if st.button("▶ Continuar: ejecutar modelo predictivo", type="primary", use_container_width=True):
+        with st.spinner("Entrenando Random Forest y calculando IRI..."):
+            st.session_state.n3 = notebook_3_modelo(st.session_state.n2)
+        st.session_state.resultado = (
+            st.session_state.n1,
+            st.session_state.n2,
+            st.session_state.n3,
+        )
+        st.session_state.paso_siad = 5
+        st.success(f"✓ Modelo completado · {len(st.session_state.n3['scoring']):,} registros evaluados.")
+        st.rerun()
+
+# Paso 5: acceso al dashboard
+if st.session_state.paso_siad == 5:
+    st.success(
+        "✅ **Procesamiento SIAD completado.**\n\n"
+        "La información ya está preparada. Presiona el botón para visualizar los KPI."
+    )
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        mostrar_dashboard = st.button("📊 Abrir Dashboard SIAD", type="primary", use_container_width=True)
+    with c2:
+        if st.button("↻ Reiniciar", use_container_width=True):
+            reiniciar_siad()
+            st.rerun()
+    if not mostrar_dashboard and not st.session_state.get("dashboard_abierto", False):
+        st.stop()
+    st.session_state.dashboard_abierto = True
+
 if st.session_state.resultado is None:
-    st.info("Carga el ZIP con las bases EXCON o indica su carpeta y presiona **Procesar SIAD**.")
+    if st.session_state.paso_siad == 0:
+        st.info("Carga el ZIP con las bases EXCON o indica su carpeta y presiona **Procesar SIAD**.")
     st.stop()
 
 n1, n2, n3 = st.session_state.resultado
