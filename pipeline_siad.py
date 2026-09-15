@@ -112,7 +112,7 @@ def build_scoring(src):
     inv = src["inventario"].copy()
     prod = src["productos"].copy()
 
-    sku_m = pick(mov, ["n_producto", "articulo", "producto"])
+    sku_m = pick(mov, ["no_producto", "n_producto", "articulo", "producto"])
     date_m = pick(mov, ["fecha_registro", "fecha"])
     qty_m = pick(mov, ["cantidad"])
     cc_m = pick(mov, ["centro_de_costo", "centro_costo"], required=False)
@@ -141,7 +141,7 @@ def build_scoring(src):
                     transferencias=("transferencia","sum")))
 
     # Inventario actual
-    sku_i = pick(inv, ["articulo", "n_producto", "producto"])
+    sku_i = pick(inv, ["articulo", "no_producto", "n_producto", "producto"])
     qty_i = pick(inv, ["cantidad"])
     cost_i = pick(inv, ["costo_extendido"], required=False)
     inv["sku"] = inv[sku_i].astype(str).str.strip()
@@ -152,7 +152,7 @@ def build_scoring(src):
     )
 
     # Descripción de producto
-    sku_p = pick(prod, ["n", "articulo", "n_producto"])
+    sku_p = pick(prod, ["no", "n", "articulo", "no_producto", "n_producto"])
     desc_p = pick(prod, ["descripcion"], required=False)
     prod["sku"] = prod[sku_p].astype(str).str.strip()
     descr = (prod[["sku", desc_p]].drop_duplicates("sku")
