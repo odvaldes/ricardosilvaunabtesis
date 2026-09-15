@@ -4,11 +4,13 @@ SIAD LITE - Sistema Inteligente de Apoyo a la Decisión
 Dashboard liviano para Streamlit Community Cloud.
 
 ARQUITECTURA RECOMENDADA
-GitHub Actions / procesamiento local:
-    Bases EXCON -> Notebook 1 -> Notebook 2 -> Notebook 3 -> scoring_siad.parquet
+GitHub Actions:
+    3 partes de Movs. productos -> reconstrucción del Excel
+    -> Bases EXCON -> Notebook 1 -> Notebook 2 -> Notebook 3
+    -> data/scoring_siad.parquet
 
 Streamlit:
-    scoring_siad.parquet -> Dashboard SIAD
+    data/scoring_siad.parquet -> Dashboard SIAD
 
 Ejecución:
     streamlit run SIAD_Lite_Streamlit.py
@@ -142,7 +144,24 @@ def preparar(df):
 
 @st.cache_data(show_spinner=False)
 def cargar_parquet(path):
-    return preparar(pd.read_parquet(path))
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(
+            "Aún no existe data/scoring_siad.parquet. "
+            "Ejecuta primero el workflow de GitHub Actions."
+        )
+    if p.stat().st_size < 8:
+        raise ValueError(
+            "data/scoring_siad.parquet está vacío o es un archivo placeholder. "
+            "Elimínalo y ejecuta GitHub Actions para generar el scoring real."
+        )
+    try:
+        return preparar(pd.read_parquet(p))
+    except Exception as exc:
+        raise ValueError(
+            "El archivo data/scoring_siad.parquet existe, pero no es un Parquet válido. "
+            "Vuelve a generarlo mediante el pipeline SIAD."
+        ) from exc
 
 @st.cache_data(show_spinner=False)
 def cargar_subido(bytes_archivo, nombre):
