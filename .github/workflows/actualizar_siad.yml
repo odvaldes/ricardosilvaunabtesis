@@ -1,0 +1,49 @@
+name: Actualizar SIAD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  procesar-siad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Verificar partes de movimientos
+        run: |
+          ls -lh data/
+          test -f "data/Movs_productos.parte01"
+          test -f "data/Movs_productos.parte02"
+          test -f "data/Movs_productos.parte03"
+
+      - name: Ejecutar pipeline SIAD
+        run: python pipeline_siad.py
+
+      - name: Verificar scoring
+        run: |
+          test -s "data/scoring_siad.parquet"
+          ls -lh "data/scoring_siad.parquet"
+
+      - name: Guardar scoring actualizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282舫憹actions[bot]@users.noreply.github.com"
+          git add -f data/scoring_siad.parquet
+          git diff --cached --quiet || git commit -m "Actualizar scoring SIAD"
+          git push
+
