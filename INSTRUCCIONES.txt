@@ -1,0 +1,22 @@
+ARCHIVOS FINALES GITHUB ACTIONS - SIAD
+
+1. Reemplaza pipeline_siad.py en la raíz del repositorio.
+2. Reemplaza/crea .github/workflows/actualizar_siad.yml.
+3. Verifica requirements.txt.
+4. En data/ deben estar:
+   - Reporte Inventario.xlsx
+   - Historicos recepciones de compra.xlsx
+   - Lins compra.xlsx
+   - Pedidos compra.xlsx
+   - Proyectos.xlsx
+   - Productos.xlsx
+   - Movs_productos.parte01
+   - Movs_productos.parte02
+   - Movs_productos.parte03
+
+NO subas Movs. productos.xlsx completo.
+NO crees scoring_siad.parquet vacío.
+
+5. GitHub > Actions > Actualizar SIAD > Run workflow.
+6. Al finalizar en verde, se genera y guarda data/scoring_siad.parquet.
+7. Streamlit app.py lo leerá automáticamente.
